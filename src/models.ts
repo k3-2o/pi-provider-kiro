@@ -1,5 +1,11 @@
 // Feature 2: Model Definitions
 
+import { readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
+
+const CACHE_PATH = join(homedir(), ".kiro-models-cache.json");
+
 // Valid Kiro model IDs - API accepts friendly names directly
 export const KIRO_MODEL_IDS = new Set([
   "claude-opus-4.7",
@@ -16,10 +22,155 @@ export const KIRO_MODEL_IDS = new Set([
   "auto",
 ]);
 
+let cachedIdsLoaded = false;
+export function loadCachedModelIds(): void {
+  if (cachedIdsLoaded) return;
+  if (!existsSync(CACHE_PATH)) return;
+  try {
+    const raw = readFileSync(CACHE_PATH, "utf-8");
+    const data = JSON.parse(raw) as Record<string, typeof kiroModels>;
+    for (const regionModels of Object.values(data)) {
+      if (Array.isArray(regionModels)) {
+        for (const m of regionModels) {
+          if (m && m.id) {
+            const kiroId = m.id.replace(/(\d)-(\d)/g, "$1.$2");
+            KIRO_MODEL_IDS.add(kiroId);
+          }
+        }
+      }
+    }
+    cachedIdsLoaded = true;
+  } catch {
+    // Ignore cache errors
+  }
+}
+
+export function getCachedModels(region: string): typeof kiroModels {
+  if (existsSync(CACHE_PATH)) {
+    try {
+      const raw = readFileSync(CACHE_PATH, "utf-8");
+      const data = JSON.parse(raw) as Record<string, typeof kiroModels>;
+      if (data && Array.isArray(data[region])) {
+        return data[region];
+      }
+    } catch {
+      // Ignore cache errors
+    }
+  }
+  return filterModelsByRegion(kiroModels, region);
+}
+
+export function isCacheStale(region: string): boolean {
+  if (!existsSync(CACHE_PATH)) return true;
+  try {
+    const raw = readFileSync(CACHE_PATH, "utf-8");
+    const data = JSON.parse(raw) as Record<string, typeof kiroModels>;
+    if (!data || !Array.isArray(data[region])) return true;
+    const stat = statSync(CACHE_PATH);
+    // Stale if older than 1 hour
+    return Date.now() - stat.mtimeMs > 3600_000;
+  } catch {
+    return true;
+  }
+}
+
+export async function updateKiroModelsCache(
+  accessToken: string,
+  region: string,
+  profileArn?: string,
+): Promise<void> {
+  try {
+    const qHost = `https://q.${region}.amazonaws.com`;
+    const url = new URL(`${qHost}/ListAvailableModels`);
+    url.searchParams.set("origin", "AI_EDITOR");
+    if (profileArn) {
+      url.searchParams.set("profileArn", profileArn);
+    }
+
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (!response.ok) {
+      return;
+    }
+
+    const data = (await response.json()) as { models?: Array<{ modelId: string }> };
+    const fetchedModels = data.models || [];
+    if (fetchedModels.length === 0) return;
+
+    const newModels = fetchedModels.map((fm) => {
+      const kiroId = fm.modelId;
+      const piId = kiroId.replace(/(\d)\.(\d)/g, "$1-$2");
+
+      const existing = kiroModels.find((m) => m.id === piId);
+      if (existing) {
+        return existing;
+      }
+
+      const isClaude = piId.startsWith("claude");
+      const isReasoning = piId.includes("opus") || piId.includes("sonnet") || piId.includes("coder") || piId.includes("deepseek");
+      const name = piId
+        .split("-")
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ");
+
+      return {
+        id: piId,
+        name: name,
+        api: "kiro-api" as const,
+        provider: "kiro" as const,
+        baseUrl: `${qHost}/generateAssistantResponse`,
+        reasoning: isReasoning,
+        input: isClaude ? (["text", "image"] as ("text" | "image")[]) : (["text"] as ("text" | "image")[]),
+        cost: ZERO_COST,
+        contextWindow: isClaude ? 1000000 : 200000,
+        maxTokens: isClaude ? 65536 : 8192,
+      };
+    });
+
+    if (!newModels.some((m) => m.id === "auto")) {
+      newModels.push({
+        id: "auto",
+        name: "Auto",
+        api: "kiro-api" as const,
+        provider: "kiro" as const,
+        baseUrl: `${qHost}/generateAssistantResponse`,
+        reasoning: true,
+        input: ["text", "image"],
+        cost: ZERO_COST,
+        contextWindow: 1000000,
+        maxTokens: 65536,
+      });
+    }
+
+    let cache: Record<string, typeof kiroModels> = {};
+    if (existsSync(CACHE_PATH)) {
+      try {
+        cache = JSON.parse(readFileSync(CACHE_PATH, "utf-8"));
+      } catch {
+        // Ignore parsing errors
+      }
+    }
+
+    cache[region] = newModels;
+    writeFileSync(CACHE_PATH, JSON.stringify(cache, null, 2), "utf-8");
+
+    cachedIdsLoaded = false;
+    loadCachedModelIds();
+  } catch (error) {
+    // Ignore fetch/cache errors
+  }
+}
+
 export function resolveKiroModel(modelId: string): string {
   // Convert pi format (dashes) to kiro format (dots): claude-opus-4-6 -> claude-opus-4.6
   // Only convert digit-dash-digit patterns (version numbers like 4-6 -> 4.6)
   const kiroId = modelId.replace(/(\d)-(\d)/g, "$1.$2");
+  loadCachedModelIds();
   if (!KIRO_MODEL_IDS.has(kiroId)) {
     throw new Error(`Unknown Kiro model ID: ${modelId}`);
   }

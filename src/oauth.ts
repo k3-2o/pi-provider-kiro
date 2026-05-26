@@ -45,6 +45,23 @@ export async function loginKiro(
   callbacks: OAuthLoginCallbacks,
   preferredMethod: KiroLoginMethod = "auto",
 ): Promise<OAuthCredentials> {
+  const creds = await loginKiroInternal(callbacks, preferredMethod);
+  if (!process.env.VITEST) {
+    try {
+      const { resolveApiRegion, updateKiroModelsCache } = await import("./models.js");
+      const region = resolveApiRegion((creds as KiroCredentials).region);
+      updateKiroModelsCache(creds.access, region, (creds as KiroCredentials).profileArn).catch(() => {});
+    } catch {
+      // Ignore cache errors
+    }
+  }
+  return creds;
+}
+
+async function loginKiroInternal(
+  callbacks: OAuthLoginCallbacks,
+  preferredMethod: KiroLoginMethod = "auto",
+): Promise<OAuthCredentials> {
   const { getKiroCliCredentials, getKiroCliCredentialsAllowExpired, saveKiroCliCredentials, getKiroCliSocialToken } =
     await import("./kiro-cli.js");
 
@@ -124,6 +141,20 @@ export async function loginKiroBuilderID(callbacks: OAuthLoginCallbacks): Promis
 const EXPIRES_BUFFER_MS = 5 * 60 * 1000;
 
 export async function refreshKiroToken(credentials: OAuthCredentials): Promise<OAuthCredentials> {
+  const refreshed = await refreshKiroTokenInternal(credentials);
+  if (!process.env.VITEST) {
+    try {
+      const { resolveApiRegion, updateKiroModelsCache } = await import("./models.js");
+      const region = resolveApiRegion((refreshed as KiroCredentials).region);
+      updateKiroModelsCache(refreshed.access, region, (refreshed as KiroCredentials).profileArn).catch(() => {});
+    } catch {
+      // Ignore cache errors
+    }
+  }
+  return refreshed;
+}
+
+async function refreshKiroTokenInternal(credentials: OAuthCredentials): Promise<OAuthCredentials> {
   const { getKiroCliCredentials, getKiroCliCredentialsAllowExpired, saveKiroCliCredentials, getKiroCliSocialToken } =
     await import("./kiro-cli.js");
 

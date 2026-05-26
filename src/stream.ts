@@ -230,6 +230,15 @@ export function streamKiro(
       const cliCreds = getKiroCliCredentials() ?? getKiroCliCredentialsAllowExpired();
       const cliProfileArn = cliCreds?.access === accessToken ? cliCreds.profileArn : undefined;
       let profileArn = optionProfileArn || cliProfileArn || (await resolveProfileArn(accessToken, endpoint));
+
+      // Trigger dynamic models cache update in the background if empty or stale
+      const ep = new URL(endpoint);
+      const region = ep.hostname.split(".")[1] || "us-east-1";
+      const { isCacheStale, updateKiroModelsCache } = await import("./models.js");
+      if (!process.env.VITEST && isCacheStale(region)) {
+        updateKiroModelsCache(accessToken, region, profileArn).catch(() => {});
+      }
+
       const kiroModelId = resolveKiroModel(model.id);
       const thinkingEnabled = !!options?.reasoning || model.reasoning;
       debugLog("request.init", {
