@@ -1,0 +1,8 @@
+node_modules/
+*.tsbuildinfo
+
+# Agent/tool state
+.agent/
+.agents/
+.ralph/
+*.tgz
