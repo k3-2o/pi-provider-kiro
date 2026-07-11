@@ -88,12 +88,33 @@ export function getContentText(msg: Message): string {
   return "";
 }
 
+/**
+ * Normalize a tool's JSON schema into a shape Bedrock/Kiro will accept.
+ *
+ * Kiro (Amazon Q / Bedrock) requires every toolSpec.inputSchema.json to have
+ * `type: "object"` — the whole request is rejected with 400 TOOL_SCHEMA_INVALID
+ * otherwise (observed with typebox schemas that omit `type` or use a non-object
+ * root like `Type.Any()` / `Type.Undefined()`). Coerce to a valid object schema,
+ * preserving `properties`, `required`, and any other fields when present.
+ */
+function normalizeToolInputSchema(parameters: unknown): { json: Record<string, unknown> } {
+  const base = parameters && typeof parameters === "object" ? parameters : {};
+  const schema = { ...(base as Record<string, unknown>) };
+  if (schema.type !== "object") {
+    schema.type = "object";
+  }
+  if (!schema.properties || typeof schema.properties !== "object") {
+    schema.properties = {};
+  }
+  return { json: schema };
+}
+
 export function convertToolsToKiro(tools: Tool[]): KiroToolSpec[] {
   return tools.map((tool) => ({
     toolSpecification: {
       name: tool.name,
       description: tool.description,
-      inputSchema: { json: tool.parameters as Record<string, unknown> },
+      inputSchema: normalizeToolInputSchema(tool.parameters),
     },
   }));
 }
