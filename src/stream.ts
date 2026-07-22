@@ -823,11 +823,11 @@ export function streamKiro(
         // when all tool calls were skipped due to empty/unparseable input — that
         // combination (empty content + toolUse stop) causes pi's agent loop to
         // stall waiting for tool results that will never arrive.
-        if (!receivedContextUsage && emittedToolCalls === 0) {
-          output.stopReason = "length";
-        } else {
-          output.stopReason = emittedToolCalls > 0 ? "toolUse" : "stop";
-        }
+        //
+        // Note: Kiro does not reliably send a contextUsage event on every
+        // response — its absence is NOT evidence of truncation. Only set
+        // stopReason="length" when there's explicit API evidence.
+        output.stopReason = emittedToolCalls > 0 ? "toolUse" : "stop";
         stream.push({ type: "done", reason: output.stopReason as "stop" | "toolUse", message: output });
         debugLog("response.done", {
           stopReason: output.stopReason,

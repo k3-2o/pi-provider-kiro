@@ -1830,9 +1830,10 @@ describe("Feature 9: Streaming Integration", () => {
   // Truncation recovery (Task 4.1)
   // =========================================================================
 
-  it("sets stopReason to length when stream ends without contextUsage event", async () => {
-    // Stream that ends without contextUsagePercentage event
-    const mockFetch = mockFetchOk('{"content":"partial response that got cut off"}');
+  it("defaults to stopReason stop when contextUsage event is absent", async () => {
+    // Kiro does not always send a contextUsage event for normal completions.
+    // Absence of contextUsage should NOT be treated as truncation.
+    const mockFetch = mockFetchOk('{"content":"complete response"}');
     vi.stubGlobal("fetch", mockFetch);
 
     const stream = streamKiro(makeModel({ reasoning: false }), makeContext(), { apiKey: "tok" });
@@ -1840,7 +1841,7 @@ describe("Feature 9: Streaming Integration", () => {
 
     const done = events.find((e) => e.type === "done");
     expect(done).toBeDefined();
-    expect(done?.type === "done" && done.message.stopReason).toBe("length");
+    expect(done?.type === "done" && done.message.stopReason).toBe("stop");
 
     vi.unstubAllGlobals();
   });
