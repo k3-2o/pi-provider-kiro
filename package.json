@@ -21,6 +21,7 @@
   ],
   "files": [
     "dist",
+    "index.js",
     "README.md"
   ],
   "scripts": {
@@ -36,7 +37,7 @@
   },
   "pi": {
     "extensions": [
-      "./dist/index.js"
+      "./index.js"
     ]
   },
   "dependencies": {
