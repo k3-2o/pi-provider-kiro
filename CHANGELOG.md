@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Spurious "maximum output token limit" error on every completion**: The `stopReason` was incorrectly set to `"length"` whenever the Kiro API did not send a `contextUsage` event in the stream. Kiro does not reliably emit this event — its absence is not evidence of truncation. Now defaults to `"stop"` (normal completion) unless tool calls were emitted (`"toolUse"`).
 - **`k3-2o/pi-provider-kiro:dist` extension name**: `pi.extensions` pointed to `./dist/index.js`, causing pi to append `:dist` when installed via git. Added a root `index.ts` wrapper so it shows cleanly as `k3-2o/pi-provider-kiro`.
+- **ListAvailableProfiles 403 warning corrupts pi TUI on first call**: `console.warn()` wrote raw text to stderr, splattering across pi's input bar and "Working..." spinner on every fresh pi process. Changed to `debugLog()` (only visible with `KIRO_DEBUG` env var). The negative cache still silences retries.
 
 ### Fixed (merged from upstream)
 

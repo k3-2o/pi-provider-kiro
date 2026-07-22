@@ -164,12 +164,16 @@ async function resolveProfileArn(accessToken: string, endpoint: string): Promise
       body: "{}",
     });
     if (!r.ok) {
-      // Warn once (loud) so the user knows profileArn is unavailable, then
+      // Log to debug file once so the user can investigate if needed, then
       // silence via the negative cache so it doesn't recur every message.
+      // console.warn is deliberately avoided here — it writes raw text to
+      // stderr which corrupts pi's TUI (input bar, spinner, etc.).
       if (firstFailure) {
-        console.warn(
-          `[pi-provider-kiro] ListAvailableProfiles returned ${r.status} ${r.statusText}. profileArn will be omitted (expected for AWS Builder ID accounts). Suppressing further warnings for ${PROFILE_ARN_NEGATIVE_COOLDOWN_MS / 1000}s.`,
-        );
+        debugLog("profileArn.httpError", {
+          status: r.status,
+          statusText: r.statusText,
+          message: `profileArn will be omitted (expected for AWS Builder ID accounts). Suppressing for ${PROFILE_ARN_NEGATIVE_COOLDOWN_MS / 1000}s.`,
+        });
       }
       profileArnNegativeCache.set(endpoint, Date.now() + PROFILE_ARN_NEGATIVE_COOLDOWN_MS);
       return undefined;
@@ -186,9 +190,10 @@ async function resolveProfileArn(accessToken: string, endpoint: string): Promise
     return arn;
   } catch (error) {
     if (firstFailure) {
-      console.warn(
-        `[pi-provider-kiro] profileArn resolution failed: ${error instanceof Error ? error.message : String(error)}. Suppressing further warnings for ${PROFILE_ARN_NEGATIVE_COOLDOWN_MS / 1000}s.`,
-      );
+      debugLog("profileArn.fetchError", {
+        error: error instanceof Error ? error.message : String(error),
+        message: `Suppressing for ${PROFILE_ARN_NEGATIVE_COOLDOWN_MS / 1000}s.`,
+      });
     }
     profileArnNegativeCache.set(endpoint, Date.now() + PROFILE_ARN_NEGATIVE_COOLDOWN_MS);
     return undefined;
